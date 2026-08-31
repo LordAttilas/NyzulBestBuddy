@@ -1,6 +1,6 @@
 _addon.name = 'NyzulBestBuddy'
 _addon.author = 'LordAttilas'
-_addon.version = '2.0'
+_addon.version = '3.0'
 _addon.commands = {'NyzulBestBuddy','nbb'}
 _addon.language = 'english'
 
@@ -60,7 +60,8 @@ tLampOrder = {
 
 
 eventClock = nil
-clock = os.clock()
+eventClockOffset = 0
+displayClock = os.clock()
 scanClock = os.clock()
 text_box = texts.new(settings)
 
@@ -76,6 +77,7 @@ lampFloorDetected = false
 currentZone = 0
 currentFloorRuneFilter = 0
 objectiveCompleted = false
+floorObjective = 0
 
 --Convert direction to a visual cue
 function directionArrow(decimal)
@@ -122,6 +124,7 @@ function ResetLamps()
 	currentFloorRuneFilter = 0
 	objectiveCompleted = false
 	lampFloorDetected = false
+	floorObjective = 0
 
 	for k,v in pairs(tLamps) do
 		tLamps[k] = {}
@@ -135,6 +138,12 @@ function ResetSequences()
 	end
 end
 
+function setRemainingTime(newMinuteRemaining)
+	--if newMinuteRemaining > 0 then
+	local remainingMinutes = 30-(math.round(((os.clock()- eventClock)/60),0))
+	eventClockOffset = remainingMinutes - newMinuteRemaining
+	--end
+end
   
 --Handles commands
 windower.register_event('addon command', function(...)
@@ -159,6 +168,9 @@ windower.register_event('addon command', function(...)
 		else
 			windower.add_to_chat(200, 'NyzulBestBuddy is not running.')
 		end
+		
+	elseif #arg == 2 and arg[1]:lower() == 'time' then
+		setRemainingTime(tonumber(arg[2]))
 		
 	elseif #arg >= 1 and arg[1]:lower() == 'set' then
 		
@@ -255,10 +267,11 @@ windower.register_event('addon command', function(...)
 			windower.add_to_chat(200, 'NyzulBestBuddy starting debug mode.')
 		end
 
-	elseif #arg == 1 and arg[1]:lower() == 'help' then
+	elseif #arg == 0 or (#arg == 1 and arg[1]:lower() == 'help') then
 		windower.add_to_chat(200, 'Available Options:')
 		windower.add_to_chat(200, '  //nbb start - Turns on NyzulBestBuddy and starts sending lamp packets on lamp floor')
 		windower.add_to_chat(200, '  //nbb stop - Turns off NyzulBestBuddy')
+		windower.add_to_chat(200, '  //nbb time [min] - Set remaining time in minute')
 		windower.add_to_chat(200, '  //nbb set [a-e] [pos] - Set lamp [Target] to correct position [Last sequence]')
 		windower.add_to_chat(200, '  //nbb insert a-e - Insert light sequence manually')
 		windower.add_to_chat(200, '  //nbb remove - Remove last light sequence manually')
@@ -271,7 +284,7 @@ end)
 
 --Register and parse incoming 0x0E for relevant data
 windower.register_event("incoming chunk", function(id, data)
-	if id == 0x0E  then
+	if running == true and currentZone == 77 and id == 0x0E then
 
         local packet     = packets.parse('incoming', data)
 		local mob_index  = packet["Index"]
@@ -280,8 +293,56 @@ windower.register_event("incoming chunk", function(id, data)
 			if mob_index == k then
 				mob = windower.ffxi.get_mob_by_index(mob_index)
 				if mob ~= nil then
-					if mob.name == "Runic Lamp" or mob.name == "Rune of Transfer" then
+					
+					if mob.name == "Runic Lamp" then
+						tLamps[k] = mob	
+					
+						if(packet["_unknown4"] > 0)then
+							
+							activated = bit.band(packet["_unknown4"], 0x10000) ~= 0
+								
+							local lampPosition = 0
+							--Find the last lamp position recorded
+							for i = #lampSequences,1, -1 do
+								local sequenceLampIndex = lampSequences[i]
+								local rowItemIndex = math.fmod(i-1,lampCount)+1
+								if k == sequenceLampIndex then
+									lampPosition = rowItemIndex
+									break
+								end
+							end
+							
+							--Set lamp to activated
+							if lampPosition >= 0 or lampPosition <= lampCount then
+								valueChanged = false
+								newValue = activated and lampPosition or 0
+								if tLampOrder[k] ~= newValue then valueChanged = true end
+								if floorObjective == 6 or floorObjective == 7 then
+									--LAMPS ORDER OR ALL ONLY
+									tLampOrder[k] =  newValue
+								end
+							
+								if debugmode and valueChanged then
+									windower.add_to_chat(200, "NyzulBestBuddy Debug - Runic Lamp.."..k.." set activated = "..(activated and "1" or "0").." with packet _unknown4...")								
+								end
+							end
+								
+						end
+						
+					elseif mob.name == "Rune of Transfer" then
 						tLamps[k] = mob
+						
+						if(packet["_unknown4"] > 0)then
+							activated = bit.band(packet["_unknown4"], 0x10000) ~= 0
+							
+							--Strangely Rune of Transfer is activated from beginning on lamps floor
+							if objectiveCompleted == false and activated and floorObjective <= 4 then 
+								objectiveCompleted = true
+								if debugmode then
+									windower.add_to_chat(200, "NyzulBestBuddy Debug - Rune of Transfer activated with packet _unknown4...")								
+								end
+							end
+						end
 					end
 				end
 			end
@@ -329,7 +390,7 @@ function Display()
 
 	--Run timer
 	if eventClock ~= nil then
-		local remainingMinutes = 30-(math.round(((os.clock()- eventClock)/60),0))
+		local remainingMinutes = 30-(math.round(((os.clock()- eventClock)/60),0))-eventClockOffset
 		new_text = new_text .."Timer - "
 		if remainingMinutes <= 5 then
 			new_text = new_text .."\\cs(255,0,0)"
@@ -338,7 +399,30 @@ function Display()
 		else
 			new_text = new_text .."\\cs(200,200,200)"
 		end
-		new_text = new_text..remainingMinutes.." min(s)\\cr\n"
+		new_text = new_text..remainingMinutes.." min(s)\\cr"
+		
+		if floorObjective > 0 then
+			new_text = new_text.." Objective - \\cs(200,200,200)"
+			if floorObjective == 1 then
+				new_text = new_text.."One"
+			elseif floorObjective == 2 then
+				new_text = new_text.."Same"
+			elseif floorObjective == 3 then
+				new_text = new_text.."All"
+			elseif floorObjective == 4 then
+				new_text = new_text.."Leader"
+			elseif floorObjective == 5 then
+				new_text = new_text.."Lamps"
+			elseif floorObjective == 6 then
+				new_text = new_text.."Lamps (Order)"
+			elseif floorObjective == 7 then
+				new_text = new_text.."Lamps (All)"
+			elseif floorObjective == 8 then
+				new_text = new_text.."Lamps (Code)"
+			end
+			new_text = new_text.."\\cr"
+		end
+		new_text = new_text.."\n"
 	end
 
 	--Detect current floor Rune
@@ -371,7 +455,9 @@ function Display()
 					new_text = new_text .. target.name
 					if isRunicLamp then
 						new_text = new_text.." "..GetLampAssignement(target.index)
-						lampCountCheck = lampCountCheck + 1
+						local lampIndex = tLampIndexes[target.index]
+						if lampIndex > lampCountCheck then lampCountCheck = lampIndex end
+						--lampCountCheck = lampCountCheck + 1
 					end
 					if debugmode then
 						new_text = new_text .. " ID: [" .. (target.index) .. "]"
@@ -391,6 +477,7 @@ function Display()
 			windower.add_to_chat(200, "NyzulBestBuddy Debug - Lamp quantity changed to "..lampCountCheck..".")
 		end
 		lampCount = lampCountCheck
+		lampFloorDetected = true
 	end
 	
 	--Display current lamp Sequences
@@ -469,7 +556,8 @@ function Display()
 					new_text = new_text.."["..GetLampAssignement(target.index).."] "
 				end
 				new_text = new_text .. "\n" .. target.name .. " x:"..math.round(target.x,2) .. " y:"..math.round(target.y,2).." z:"..math.round(target.z,2)
-				new_text = new_text .. "\n" .. "Index:" .. target.index .. " status:" .. target.status .. " entity_type:" .. target.entity_type .. " spawn_type:" .. target.spawn_type
+				--new_text = new_text .. "\n" .. "Index:" .. target.index .. " status:" .. target.status .. " entity_type:" .. target.entity_type .. " spawn_type:" .. target.spawn_type
+				new_text = new_text .. "\n" .. "Index:" .. target.index .. " status:" .. target.status .. " spawn_type:" .. target.spawn_type
 				new_text = new_text .. "\n" .. "Distance:"..math.round(distance,1) .. " Direction:"..math.round(relativeDirection,1) .. " " .. directionArrow(relativeDirection) 
 			end
 		end
@@ -478,7 +566,7 @@ function Display()
 	end
 	
 	if objectiveCompleted then
-		new_text = new_text .. "\n\\cs(0,255,0)Floor objective completed !!!\\cr"
+		new_text = new_text .. "\n\\cs(0,255,0)Floor objective completed !!!\\cr"	
 	end
 
 	text_box:text(new_text)
@@ -501,14 +589,48 @@ windower.register_event("zone change", function(new_id,old_id)
 end)
 
 
+
 windower.register_event("incoming text", function(original,modified,original_mode,modified_mode,blocked)
 	if running == true and currentZone == 77 then
-		if string.match(original,'Objective:') and string.match(original,'lamps') then
-			windower.add_to_chat(200, 'NyzulBestBuddy - Lamp floor detected...')
-			lampFloorDetected = true
-			--Request a delayed lamp scan
-			needLampScan = true
-			scanClock = os.clock()
+		if string.match(original,'Time remaining') then
+			if string.match(original,'10 minutes') then
+				setRemainingTime(10)
+			elseif string.match(original,'5 minutes') then
+				setRemainingTime(5)
+			elseif string.match(original,'1 minute') then
+				setRemainingTime(1)
+			end
+		elseif string.match(original,'Event skipped.') then
+			if lampFloorDetected then
+				table.remove(lampSequences)
+			end
+		elseif string.match(original,'Avoid discovery by archaic gears!') then
+		
+		elseif string.match(original,'Objective: ') then
+		
+			if string.match(original,'Eliminate specified enemy') then
+				floorObjective = 1
+			elseif string.match(original,'Eliminate specified enemies') then
+				floorObjective = 2
+			elseif string.match(original,'Eliminate all enemies') then
+				floorObjective = 3
+			elseif string.match(original,'Eliminate enemy leader') then
+				floorObjective = 4
+			elseif string.match(original,'Activate all lamps') then
+				if debugmode then windower.add_to_chat(200, 'NyzulBestBuddy - Lamp floor detected...') end
+				lampFloorDetected = true
+				--Request a delayed lamp scan
+				needLampScan = true
+				scanClock = os.clock()
+				floorObjective = 5
+			end
+		elseif lampFloorDetected and string.match(original,'Apparently, this lamp must be activated in a specific order...') then
+			floorObjective = 6
+		elseif lampFloorDetected and string.match(original,'This lamp cannot be activated unless all other lamps are activated at the same time.') then
+			floorObjective = 7
+		elseif lampFloorDetected and string.match(original,'Your certification code has been registered') then
+			floorObjective = 8
+			
 		elseif string.match(original,'Rune of Transfer activated.') then
 			objectiveCompleted = true
 			if debugmode then
@@ -524,16 +646,22 @@ function LampAction()
     
 	if target ~= nil and target.name == "Runic Lamp" then
 		local lampAssignement = GetLampAssignement(target.index)
-		windower.add_to_chat(200, "NyzulBestBuddy Debug - Runic Lamp ["..lampAssignement.."] interaction.")
+		if debugmode then windower.add_to_chat(200, "NyzulBestBuddy Debug - Runic Lamp ["..lampAssignement.."] interaction.") end
 		lampSequences[#lampSequences+1] = target.index
 	end
 end
+
+windower.register_event('target change', function(index)
+	if running == true and (currentZone == 77 or debugmode) then
+		Display()
+	end	
+end)
 
 
 --Main loop
 windower.register_event('prerender', function()
 	
-	if running == true and os.clock() - clock > 1 then
+	if running == true and os.clock() - displayClock > 1 then
 		
 		--Force reload of zone if plugin reloaded while in the zone already
 		if currentZone == 0 then
@@ -591,7 +719,7 @@ windower.register_event('prerender', function()
 
 		end
 
-		clock = os.clock()
+		displayClock = os.clock()
 
 	end
 		
