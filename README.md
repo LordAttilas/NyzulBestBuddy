@@ -5,4 +5,4 @@ Display time remaining and Rune of transfer distance with position relative to p
 
 Automatic lamp order discovery and display floor objective.
 
-<img width="232" height="268" alt="NyzulBestBuddy_UI_Example" src="https://github.com/user-attachments/assets/c054136d-d9aa-4e7f-81f5-1fa54cb10bf6" />
+<img width="321" height="201" alt="Capture d’écran, le 2026-08-30 à 23 20 40" src="https://github.com/user-attachments/assets/dbe36d3d-d490-4709-ac3a-2c26b3ee247a" />
