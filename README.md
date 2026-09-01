@@ -1,7 +1,7 @@
 # NyzulBestBuddy
 FFXi Windower helper for Nyzul Isle Investigation
 
-Display time remaining and Rune of transfer distance with position relative to player direction. Detect lamps with distinct letters (Same for every player using this plugin) and display distance and relative direction. Automatically keep track of lamp activation order with ability to detect when lamp stay up to help record which lamp are in good order. Display current floor objective and update time remaining from incoming messages.
+Display time remaining and Rune of transfer distance with position relative to player direction. Detect lamps with distinct letters (Same for every player using this plugin) and display distance and relative direction. Automatically keep track of lamp activation order with ability to detect when lamp stay up to help record which lamp are in good order (When still in minimal range or lamp to receive info from server). Display current floor objective and update time remaining from incoming messages.
 
 Note that any action made by others are not automatically detected and must be added manually using command insert (Add lamp to sequence), remove and set (Confirm correct position of a lamp in sequence).
 
