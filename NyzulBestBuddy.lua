@@ -1,6 +1,6 @@
 _addon.name = 'NyzulBestBuddy'
 _addon.author = 'LordAttilas'
-_addon.version = '3.0'
+_addon.version = '3.1'
 _addon.commands = {'NyzulBestBuddy','nbb'}
 _addon.language = 'english'
 
@@ -10,6 +10,7 @@ texts = require('texts')
 -- create default settings file for textbox
 
 default_settings = {}
+default_settings.party_chat_sync_enabled = false
 default_settings.pos = {}
 default_settings.pos.x = 144
 default_settings.pos.y = 144
@@ -68,6 +69,7 @@ text_box = texts.new(settings)
 running = true
 debugmode = false
 needLampScan = false
+partyChatSyncActive = false
 lastZone = 0
 lastPlayerX = 9999
 lastPlayerY = 9999
@@ -78,6 +80,7 @@ currentZone = 0
 currentFloorRuneFilter = 0
 objectiveCompleted = false
 floorObjective = 0
+currentPlayerName = nil
 
 --Convert direction to a visual cue
 function directionArrow(decimal)
@@ -143,6 +146,20 @@ function setRemainingTime(newMinuteRemaining)
 	local remainingMinutes = 30-(math.round(((os.clock()- eventClock)/60),0))
 	eventClockOffset = remainingMinutes - newMinuteRemaining
 	--end
+end
+
+function InsertSequence(lampAssignement)
+	if lampAssignement == 'a' then
+			lampSequences[#lampSequences+1] = sortedLampIndexes[1]
+		elseif lampAssignement == 'b' then
+			lampSequences[#lampSequences+1] = sortedLampIndexes[2]
+		elseif lampAssignement == 'c' then
+			lampSequences[#lampSequences+1] = sortedLampIndexes[3]
+		elseif lampAssignement == 'd' then
+			lampSequences[#lampSequences+1] = sortedLampIndexes[4]
+		elseif lampAssignement == 'e' then
+			lampSequences[#lampSequences+1] = sortedLampIndexes[5]
+		end
 end
   
 --Handles commands
@@ -239,23 +256,23 @@ windower.register_event('addon command', function(...)
 		
 	elseif #arg == 2 and arg[1]:lower() == 'insert' then
 		local lampAssignement = arg[2]:lower()
-		if lampAssignement == 'a' then
-			lampSequences[#lampSequences+1] = sortedLampIndexes[1]
-		elseif lampAssignement == 'b' then
-			lampSequences[#lampSequences+1] = sortedLampIndexes[2]
-		elseif lampAssignement == 'c' then
-			lampSequences[#lampSequences+1] = sortedLampIndexes[3]
-		elseif lampAssignement == 'd' then
-			lampSequences[#lampSequences+1] = sortedLampIndexes[4]
-		elseif lampAssignement == 'e' then
-			lampSequences[#lampSequences+1] = sortedLampIndexes[5]
-		end
+		InsertSequence(lampAssignement)
 	
 	elseif #arg == 1 and arg[1]:lower() == 'remove' then	
 		table.remove(lampSequences)
 	
 	elseif #arg == 1 and arg[1]:lower() == 'clear' then
 		ResetSequences()
+	
+	elseif #arg == 1 and arg[1]:lower() == 'sync' then
+		settings.party_chat_sync_enabled = not settings.party_chat_sync_enabled
+		if settings.party_chat_sync_enabled then
+			windower.add_to_chat(200, 'NyzulBestBuddy - Party Sync enabled')
+		else
+			windower.add_to_chat(200, 'NyzulBestBuddy - Party Sync disabled')
+		end
+		settings:save()
+		
 
 	elseif #arg == 1 and arg[1]:lower() == 'debug' then
 		if debugmode == true then
@@ -276,10 +293,13 @@ windower.register_event('addon command', function(...)
 		windower.add_to_chat(200, '  //nbb insert a-e - Insert light sequence manually')
 		windower.add_to_chat(200, '  //nbb remove - Remove last light sequence manually')
 		windower.add_to_chat(200, '  //nbb clear - Clear sequences and correct positions')
+		windower.add_to_chat(200, '  //nbb sync - Send and receive party message to sync lamps between players '..(settings.party_chat_sync_enabled and "(Enabled)" or "(Disabled)"))
 		windower.add_to_chat(200, '  //nbb debug - Turns debug mode')
 		windower.add_to_chat(200, '  //nbb help - Displays this text')
 	end
 end)
+
+
 
 
 --Register and parse incoming 0x0E for relevant data
@@ -385,6 +405,9 @@ function Display()
 	new_text = ""
 
 	local player = windower.ffxi.get_player()
+	if player and currentPlayerName == nil then
+		currentPlayerName = player.name
+	end
 	local playerpos = windower.ffxi.get_mob_by_index(player.index)
 	local lampCountCheck = 0
 
@@ -586,12 +609,19 @@ end)
 
 windower.register_event("zone change", function(new_id,old_id)
 	currentZone = new_id
+	
+	if currentZone == 77 then
+		local party = windower.ffxi.get_party()
+		partyChatSyncActive = (party.party1_count or 1) > 1
+	else
+		partyChatSyncActive = false
+	end
 end)
 
 
 
 windower.register_event("incoming text", function(original,modified,original_mode,modified_mode,blocked)
-	if running == true and currentZone == 77 then
+	if (running == true and currentZone == 77) or debugmode then
 		if string.match(original,'Time remaining') then
 			if string.match(original,'10 minutes') then
 				setRemainingTime(10)
@@ -637,6 +667,24 @@ windower.register_event("incoming text", function(original,modified,original_mod
 				windower.add_to_chat(200, 'NyzulBestBuddy - Floor objective completed !!!')
 			end
 		end
+		
+		if (lampFloorDetected and partyChatSyncActive and settings.party_chat_sync_enabled) or debugmode then
+			local name, rest = original:match('^%((%S+)%)%s*(.*)$')
+			
+			if name and (name ~= currentPlayerName or debugmode) then
+				if rest == "a" or rest == "A" then
+					InsertSequence('a')
+				elseif rest == "b" or rest == "B" then
+					InsertSequence('b')
+				elseif rest == "c" or rest == "C" then
+					InsertSequence('c')
+				elseif rest == "d" or rest == "D" then
+					InsertSequence('d')
+				elseif rest == "e" or rest == "E" then
+					InsertSequence('e')
+				end
+			end
+		end
 	end
 end)
 
@@ -647,6 +695,14 @@ function LampAction()
 	if target ~= nil and target.name == "Runic Lamp" then
 		local lampAssignement = GetLampAssignement(target.index)
 		if debugmode then windower.add_to_chat(200, "NyzulBestBuddy Debug - Runic Lamp ["..lampAssignement.."] interaction.") end
+		if partyChatSyncActive and settings.party_chat_sync_enabled then
+			local n = math.random(1, 2)
+			if n == 1 then
+				windower.send_command('input /p ' .. lampAssignement:lower())
+			else
+				windower.send_command('input /p ' .. lampAssignement:upper())
+			end
+		end
 		lampSequences[#lampSequences+1] = target.index
 	end
 end
