@@ -1,6 +1,6 @@
 _addon.name = 'NyzulBestBuddy'
 _addon.author = 'LordAttilas'
-_addon.version = '3.1'
+_addon.version = '3.2'
 _addon.commands = {'NyzulBestBuddy','nbb'}
 _addon.language = 'english'
 
@@ -133,6 +133,16 @@ function ResetLamps()
 		tLamps[k] = {}
 	end
 end
+
+function checkPartyCount()
+	if currentZone == 77 then
+		local party = windower.ffxi.get_party()
+		partyChatSyncActive = (party.party1_count or 1) > 1
+	else
+		partyChatSyncActive = false
+	end
+end
+checkPartyCount()
 
 function ResetSequences()
 	lampSequences = {}
@@ -607,15 +617,11 @@ windower.register_event("status change", function(new,old)
 end)
 
 
+
 windower.register_event("zone change", function(new_id,old_id)
 	currentZone = new_id
 	
-	if currentZone == 77 then
-		local party = windower.ffxi.get_party()
-		partyChatSyncActive = (party.party1_count or 1) > 1
-	else
-		partyChatSyncActive = false
-	end
+	checkPartyCount()
 end)
 
 
