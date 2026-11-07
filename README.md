@@ -5,4 +5,6 @@ Display time remaining and Rune of transfer distance with position relative to p
 
 Note that any action made by others are not automatically detected and must be added manually using command insert (Add lamp to sequence), remove and set (Confirm correct position of a lamp in sequence).
 
+Optional party chat sync. This allow to detect and add sequence on your addon when other player respond with single letter a-e or A-E in the party chat when they turn their light on. Additionally it will also post a single letter when you turn on your lamps so it also sync their addon if they use the same. Can also work with other player without the addon by just asking them to answer single letter.
+
 <img width="321" height="201" alt="Capture d’écran, le 2026-08-30 à 23 20 40" src="https://github.com/user-attachments/assets/dbe36d3d-d490-4709-ac3a-2c26b3ee247a" />
